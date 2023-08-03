@@ -1,0 +1,36 @@
+*&---------------------------------------------------------------------*
+*& Include          Z_OLE_UTILS_TP
+*&---------------------------------------------------------------------*
+
+TABLES: sscrfields.
+DATA: g_ucomm TYPE syucomm.
+
+DATA: BEGIN OF lt_spfli OCCURS 0,
+        carrid   TYPE s_carr_id,
+        connid   TYPE s_conn_id,
+        cityfrom TYPE s_from_cit,
+        cityto   TYPE s_to_city,
+        deptime  TYPE s_dep_time,
+        arrtime  TYPE s_arr_time,
+      END OF lt_spfli.
+
+DATA: lv_selected_folder TYPE string,
+      lv_complete_path   TYPE char256,
+      lv_title           TYPE string.
+
+DATA : rc            TYPE i,
+       byte_count    TYPE i,
+       file_table    TYPE solix_tab,
+       filename      TYPE string,
+       path          TYPE string,
+       fullpath      TYPE string,
+       gd_currentrow TYPE i.
+
+DATA: lv_sample_excel(1).
+
+CONSTANTS: co_mine_path TYPE string VALUE 'SAP/Public/Excel_aa.xlsx'.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-200.
+  SELECTION-SCREEN PUSHBUTTON /1(35) p_but1 USER-COMMAND but1.
+  SELECTION-SCREEN PUSHBUTTON /1(35) p_but2 USER-COMMAND but2.
+SELECTION-SCREEN END OF BLOCK b1.
