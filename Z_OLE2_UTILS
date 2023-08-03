@@ -1,0 +1,873 @@
+*&---------------------------------------------------------------------*
+*& Include          Z_OLE2_UTILS
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*& Include          ZRIC_OLE2_UTILS
+*&---------------------------------------------------------------------*
+
+TYPE-POOLS: soi,ole2.
+
+DATA: go_application TYPE  ole2_object,
+      go_workbook    TYPE  ole2_object,
+      go_workbooks   TYPE  ole2_object,
+      go_worksheet   TYPE  ole2_object,
+      go_worksheets  TYPE  ole2_object.
+
+DATA: gv_lines          TYPE i. "Lines printed by the moment
+
+TYPES: ty_data(1500) TYPE c.
+DATA: gt_data TYPE TABLE OF ty_data,
+      gs_data LIKE LINE OF gt_data.
+
+TYPES: BEGIN OF ty_line,
+         value TYPE char255,
+       END OF ty_line.
+DATA: gt_lines TYPE TABLE OF ty_line,
+      gs_lines LIKE LINE OF gt_lines.
+
+TYPES: BEGIN OF ty_fieldcat,
+         field LIKE dd03d-fieldname,  "Field name in your internal table
+         text  LIKE dd03p-ddtext,     "Description of the column
+         width TYPE i,                "Width of the column
+       END OF  ty_fieldcat.
+DATA: gt_fieldcat TYPE TABLE OF ty_fieldcat,
+      gs_fieldcat LIKE LINE OF gt_fieldcat.
+
+
+CONSTANTS:
+  c_col_black       TYPE i VALUE 0,
+  c_col_white       TYPE i VALUE 2,
+  c_col_red         TYPE i VALUE 3,
+  c_col_light_green TYPE i VALUE 4,
+  c_col_dark_blue   TYPE i VALUE 5,
+  c_col_yellow      TYPE i VALUE 6,
+  c_col_pink        TYPE i VALUE 7,
+  c_col_light_blue  TYPE i VALUE 8,
+  c_col_brown       TYPE i VALUE 9.
+
+* Theme Colours:
+* Use the subrutine set_soft_colour.
+CONSTANTS:
+  c_theme_col_white      TYPE i VALUE 1,
+  c_theme_col_black      TYPE i VALUE 2,
+  c_theme_col_yellow     TYPE i VALUE 3,
+  c_theme_col_dark_blue  TYPE i VALUE 4,
+  c_theme_col_light_blue TYPE i VALUE 5,
+  c_theme_col_red        TYPE i VALUE 6,
+  c_theme_col_green      TYPE i VALUE 7,
+  c_theme_col_violet     TYPE i VALUE 8,
+  c_theme_col_pal_blue   TYPE i VALUE 9,
+  c_theme_col_orange     TYPE i VALUE 10.
+
+* Align:
+CONSTANTS:
+  c_center TYPE i VALUE -4108,
+  c_left   TYPE i VALUE -4131,
+  c_right  TYPE i VALUE -4152.
+
+
+
+*&———————————————————————*
+*&      Form  CREATE_DOCUMENT
+*&———————————————————————*
+*  Instanciate the application, workbook and the first worksheet.
+*———————————————————————-*
+*  –>  p1        text
+*  <–  p2        text
+*———————————————————————-*
+FORM create_document.
+
+  CREATE OBJECT go_application     'Excel.Application'.
+  CALL METHOD OF go_application    'Workbooks'   = go_workbooks.
+  CALL METHOD OF go_workbooks      'add'         = go_workbook.
+
+  CALL METHOD OF go_workbook      'Worksheets'   = go_worksheet.
+  CALL METHOD OF go_worksheet      'add'         = go_worksheet.
+*  CALL METHOD OF go_workbook      'Worksheets'   = go_worksheet.
+*  CALL METHOD OF go_worksheet      'add'         = go_worksheet.
+
+  SET PROPERTY OF go_application   'Visible'     = 0.
+  CALL METHOD OF go_application    'ACTIVESHEET' = go_worksheet.
+
+
+ENDFORM.                  " CREATE_DOCUMENT
+
+
+*&———————————————————————*
+*&      Form  CLOSE_DOCUMENT
+*&———————————————————————*
+*   Close the document and free memory objects.
+*———————————————————————-*
+*  –>  p1        text
+*  <–  p2        text
+*———————————————————————-*
+FORM close_document.
+
+  CALL METHOD OF go_application 'QUIT'.
+  FREE OBJECT go_worksheet.
+  FREE OBJECT go_workbook.
+  FREE OBJECT go_workbooks.
+  FREE OBJECT go_application.
+
+ENDFORM. "close_document
+
+*&———————————————————————*
+*&      Form  PRINT_LINE
+*&———————————————————————*
+*  Print line cell by cell with colurs, etc.
+*———————————————————————-*
+*  –>  p_data       Data to print
+*  –>  p_row        Number of the Row in excel to print
+*  –>  p_num_cols   Number of fields to be printed, if 0 all the fields
+*                    will be printed
+*  –>  p_colour     Colour of the font
+*  –>  p_colourx    Set to X if want to change the Colour
+*  –>  p_bkg_col    Background colour of the cell
+*  –>  p_bkg_colx   Set to X if want to change the Background colour
+*  –>  p_size       Size of the font
+*  –>  p_sizex      Set to X if want to change the Size
+*  –>  p_bold       Bold
+*  –>  p_boldx      Set to X if want to change to Bold
+*———————————————————————-*
+FORM print_line
+                USING
+                p_data       TYPE any
+                p_row        TYPE i
+                p_num_cols   TYPE i
+                p_colour     TYPE i
+                p_colourx    TYPE char1
+                p_bkg_col    TYPE i
+                p_bkg_colx   TYPE char1
+                p_size       TYPE i
+                p_sizex      TYPE char1
+                p_bold       TYPE i
+                p_boldx      TYPE char1.
+
+  DATA: lo_font     TYPE ole2_object,
+        lo_cell     TYPE ole2_object,
+        lo_interior TYPE ole2_object,
+        lv_cont     TYPE i.
+
+  FIELD-SYMBOLS: <field> TYPE any.
+
+  DO.
+    ADD 1 TO lv_cont.
+    ASSIGN COMPONENT lv_cont OF STRUCTURE p_data TO <field>.
+    IF sy-subrc NE 0. EXIT. ENDIF.
+
+*   Select the cell;
+    CALL METHOD OF go_worksheet 'Cells' = lo_cell
+    EXPORTING
+    #1 = p_row
+    #2 = lv_cont.
+*   Assign the value;
+    SET PROPERTY OF lo_cell 'Value' = <field>.
+*   Format:
+    CALL METHOD OF lo_cell 'font' = lo_font.
+*   Colour:
+    IF p_colourx EQ 'x'.
+      SET PROPERTY OF lo_font 'ColorIndex' = p_colour.
+    ENDIF.
+*   Background colour;
+    IF p_bkg_colx EQ 'x'.
+      CALL METHOD OF lo_cell 'Interior' = lo_interior.
+      SET PROPERTY OF lo_interior 'ColorIndex' = p_bkg_col.
+    ENDIF.
+*   Size
+    IF p_sizex EQ 'x'.
+      SET PROPERTY OF lo_font 'size' = p_size.
+    ENDIF.
+*   Bold
+    IF p_boldx EQ 'x'.
+      SET PROPERTY OF lo_font 'bold' = p_bold.
+    ENDIF.
+
+*   Exit the loop?
+    IF lv_cont EQ p_num_cols. EXIT. ENDIF.
+  ENDDO.
+
+ENDFORM. "print_line
+
+
+*&———————————————————————*
+*&      Form  add_line2print
+*&———————————————————————*
+*& Add line to be printed in subrutine PASTE_CLIPBOARD
+*&———————————————————————*
+*  –>  p_data       Data to print
+*  –>  p_num_cols   Number of fields to be printed, if 0 all the field
+*                    will be printed
+*&———————————————————————*
+FORM add_line2print
+USING
+p_data       TYPE any
+p_num_cols   TYPE i.
+
+  FIELD-SYMBOLS: <field> TYPE any.
+  DATA: lv_cont TYPE i,
+        lv_char TYPE char128.
+
+  DATA: lo_abap_typedescr TYPE REF TO cl_abap_typedescr.
+
+  CLEAR gs_data.
+  DO.
+    ADD 1 TO lv_cont.
+    ASSIGN COMPONENT lv_cont OF STRUCTURE p_data TO <field>.
+    IF sy-subrc NE 0. EXIT. ENDIF.
+
+*   Convert data depend on the kind type.
+    CALL METHOD cl_abap_typedescr=>describe_by_data
+      EXPORTING
+        p_data      = <field>
+      RECEIVING
+        p_descr_ref = lo_abap_typedescr.
+    CASE lo_abap_typedescr->type_kind.
+*     Char
+      WHEN lo_abap_typedescr->typekind_char.
+        CONCATENATE gs_data <field> INTO gs_data
+        SEPARATED BY cl_abap_char_utilities=>horizontal_tab.
+*     Date
+      WHEN lo_abap_typedescr->typekind_date.
+        WRITE <field> TO lv_char DD/MM/YYYY.
+        CONCATENATE gs_data lv_char INTO gs_data
+        SEPARATED BY cl_abap_char_utilities=>horizontal_tab.
+*     Time
+      WHEN lo_abap_typedescr->typekind_time.
+        CONCATENATE <field>(2) <field>+2(2) <field>+4(2) INTO lv_char SEPARATED BY ':'.
+        CONCATENATE gs_data lv_char INTO gs_data
+        SEPARATED BY cl_abap_char_utilities=>horizontal_tab.
+*    Others
+      WHEN OTHERS.
+        WRITE <field> TO lv_char.
+        CONCATENATE gs_data lv_char INTO gs_data
+        SEPARATED BY cl_abap_char_utilities=>horizontal_tab.
+    ENDCASE.
+
+*   Exit the loop?
+    IF lv_cont EQ p_num_cols. EXIT. ENDIF.
+  ENDDO.
+
+* Quit the first horizontal_tab:
+  SHIFT gs_data BY 1 PLACES LEFT.
+
+  APPEND gs_data TO gt_data. CLEAR gs_data.
+
+ENDFORM. "add_line2print
+
+*&———————————————————————*
+*&      Form  add_line2print_from_table
+*&———————————————————————*
+*& Add line to be printed in subrutine PASTE_CLIPBOARD from a table.
+*&———————————————————————*
+FORM add_line2print_from_table.
+
+  CLEAR gs_data.
+  LOOP AT gt_lines INTO gs_lines.
+    CONCATENATE gs_data gs_lines-value INTO gs_data
+    SEPARATED BY cl_abap_char_utilities=>horizontal_tab.
+  ENDLOOP.
+
+* Quit the first horizontal_tab:
+  SHIFT gs_data BY 1 PLACES LEFT.
+
+  APPEND gs_data TO gt_data.
+  CLEAR gs_data.
+
+ENDFORM.    "add_line2print_from_table
+
+*&———————————————————————*
+*&      Form  PASTE_CLIPBOARD
+*&———————————————————————*
+*& Paste Clipboard from the cell passed by parameter
+*&———————————————————————*
+*  –>  p_row
+*  –>  p_col
+*&———————————————————————*
+FORM paste_clipboard USING p_row TYPE i
+p_col TYPE i.
+
+  DATA: lo_cell TYPE ole2_object.
+
+  CALL FUNCTION 'CONTROL_FLUSH'
+    EXCEPTIONS
+      cntl_system_error = 1
+      cntl_error        = 2
+      OTHERS            = 3.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+  CALL FUNCTION 'CLPB_EXPORT'
+    TABLES
+      data_tab   = gt_data
+    EXCEPTIONS
+      clpb_error = 1
+      OTHERS     = 2.
+
+* Select the cell A1
+  CALL METHOD OF go_worksheet 'Cells' = lo_cell
+  EXPORTING
+  #1 = p_row
+  #2 = p_col.
+
+* Paste clipboard from cell A1
+  CALL METHOD OF lo_cell 'select'.
+  CALL METHOD OF go_worksheet 'paste'.
+
+ENDFORM.  "paste_clipboard
+
+
+*&———————————————————————*
+*&      Form  change_format
+*&———————————————————————*
+*& Change cell format
+*&———————————————————————*
+*  –>  p_rowini  p_colini Initial Range Cell
+*  –>  p_rowend  p_colend End Range Cell
+*  –>  p_colour     Colour of the font
+*  –>  p_colourx    Set to X if want to change the Colour
+*  –>  p_bkg_col    Background colour of the cell
+*  –>  p_bkg_colx   Set to X if want to change the Background colour
+*  –>  p_size       Size of the font
+*  –>  p_sizex      Set to X if want to change the Size
+*  –>  p_bold       Bold
+*  –>  p_boldx      Set to X if want to change to Bold
+*&———————————————————————*
+FORM change_format  USING     p_rowini  p_colini
+p_rowend  p_colend
+p_colour     TYPE i
+p_colourx    TYPE char1
+p_bkg_col    TYPE i
+p_bkg_colx   TYPE char1
+p_size       TYPE i
+p_sizex      TYPE char1
+p_bold       TYPE i
+p_boldx      TYPE char1.
+
+  DATA: lo_cellstart TYPE ole2_object,
+        lo_cellend   TYPE ole2_object,
+        lo_selection TYPE ole2_object,
+        lo_range     TYPE ole2_object,
+        lo_font      TYPE ole2_object,
+        lo_interior  TYPE ole2_object.
+
+* Select the Range of Cells:
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellstart
+  EXPORTING
+  #1 = p_rowini
+  #2 = p_colini.
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellend
+  EXPORTING
+  #1 = p_rowend
+  #2 = p_colend.
+  CALL METHOD OF go_worksheet 'Range' = lo_range
+  EXPORTING
+  #1 = lo_cellstart
+  #2 = lo_cellend.
+
+*   Format:
+  CALL METHOD OF lo_range 'font' = lo_font.
+*   Colour:
+  IF p_colourx EQ 'x'.
+    SET PROPERTY OF lo_font 'ColorIndex' = p_colour.
+  ENDIF.
+*   Background colour;
+  IF p_bkg_colx EQ 'x'.
+    CALL METHOD OF lo_range 'Interior' = lo_interior.
+    SET PROPERTY OF lo_interior 'ColorIndex' = p_bkg_col.
+  ENDIF.
+*   Size
+  IF p_sizex EQ 'x'.
+    SET PROPERTY OF lo_font 'size' = p_size.
+  ENDIF.
+*   Bold
+  IF p_boldx EQ 'x'.
+    SET PROPERTY OF lo_font 'bold' = p_bold.
+  ENDIF.
+
+ENDFORM. "change_format
+
+*&———————————————————————*
+*&      Form  set_soft_colour
+*&———————————————————————*
+*& Set a theme colour.
+*& For colour and bkgcolour use the theme colour constants.
+*& Shade and bkg_shade values : from -1 to 1.
+*&———————————————————————*
+*  –>  p_rowini  p_colini Initial Range Cell
+*  –>  p_rowend  p_colend End Range Cell
+*  –>  p_colour     Colour of the font
+*  –>  p_colourx    Set to X if want to change the Colour
+*  –>  p_shade      Tint and Shade
+*  –>  p_shadex     Set to X if want to change the shade
+*  –>  p_bkg_col    Background colour of the cell
+*  –>  p_bkg_colx   Set to X if want to change the Background colour
+*  –>  p_bkg_shade  Tint and Shade
+*  –>  p_bkg_shadex Set to X if want to change the shade
+*&———————————————————————*
+FORM set_soft_colour  USING  p_rowini  p_colini
+p_rowend  p_colend
+p_colour   TYPE i
+p_colourx  TYPE char1
+p_shade    TYPE float
+p_shadex   TYPE char1
+p_bkg_col  TYPE i
+p_bkg_colx TYPE char1
+p_bkg_shade TYPE float
+p_bkg_shadex TYPE char1.
+
+  DATA: lo_cellstart TYPE ole2_object,
+        lo_cellend   TYPE ole2_object,
+        lo_selection TYPE ole2_object,
+        lo_range     TYPE ole2_object,
+        lo_font      TYPE ole2_object,
+        lo_interior  TYPE ole2_object.
+
+* Select the Range of Cells:
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellstart
+  EXPORTING
+  #1 = p_rowini
+  #2 = p_colini.
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellend
+  EXPORTING
+  #1 = p_rowend
+  #2 = p_colend.
+  CALL METHOD OF go_worksheet 'Range' = lo_range
+  EXPORTING
+  #1 = lo_cellstart
+  #2 = lo_cellend.
+
+*   Format:
+  CALL METHOD OF lo_range 'font' = lo_font.
+
+*   Colour:
+  IF p_colourx EQ 'x'.
+    SET PROPERTY OF lo_font 'ThemeColor' = p_colour.
+    IF  p_shadex EQ 'x'.
+      SET PROPERTY OF lo_font 'TintAndShade' = p_shade.
+    ENDIF.
+  ENDIF.
+
+* BackGround Colour:
+  IF p_bkg_colx EQ 'x'.
+    CALL METHOD OF lo_range 'Interior' = lo_interior.
+    SET PROPERTY OF lo_interior 'ThemeColor' = p_bkg_col.
+    IF p_bkg_shadex EQ 'x'.
+      SET PROPERTY OF lo_interior 'TintAndShade' = p_bkg_shade.
+    ENDIF.
+  ENDIF.
+
+ENDFORM. "set_soft_colour
+
+*&———————————————————————*
+*&      Form  Column_width
+*&———————————————————————*
+*    Adjust column width
+*———————————————————————-*
+*  –>  p_column Column numbe
+*  –>  p_width  Width
+*———————————————————————-*
+FORM column_width  USING p_column TYPE i
+p_width   TYPE i.
+
+  DATA: lo_cellstart TYPE ole2_object,
+        lo_cellend   TYPE ole2_object,
+        lo_selection TYPE ole2_object,
+        lo_column    TYPE ole2_object.
+
+* Select the Column
+  CALL METHOD OF go_worksheet 'Columns' = lo_column
+  EXPORTING
+  #1 = p_column.
+
+  CALL METHOD OF lo_column 'select'.
+  CALL METHOD OF go_application 'selection' = lo_selection.
+
+  SET PROPERTY OF lo_column 'ColumnWidth' = p_width.
+
+ENDFORM. "Column_width
+
+*&———————————————————————*
+*&      Form  WrapText
+*&———————————————————————*
+*  Wrap Text
+*———————————————————————-*
+*  –>  p_rowini  p_colini Initial Range Cell
+*  –>  p_rowend  p_colend End Range Cell
+*———————————————————————-*
+FORM wrap_text  USING p_rowini
+p_colini
+p_rowend
+p_colend.
+
+  DATA: lo_cellstart TYPE ole2_object,
+        lo_cellend   TYPE ole2_object,
+        lo_selection TYPE ole2_object,
+        lo_range     TYPE ole2_object.
+
+* Select the Range of Cells:
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellstart
+  EXPORTING
+  #1 = p_rowini
+  #2 = p_colini.
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellend
+  EXPORTING
+  #1 = p_rowend
+  #2 = p_colend.
+  CALL METHOD OF go_worksheet 'Range' = lo_range
+  EXPORTING
+  #1 = lo_cellstart
+  #2 = lo_cellend.
+
+  SET PROPERTY OF lo_range 'WrapText' = 1.
+
+ENDFORM. "WrapText
+
+*&———————————————————————*
+*&      Form  Merge Cells
+*&———————————————————————*
+*  Merge Cells
+*———————————————————————-*
+*  –>  p_rowini  p_colini Initial Range Cell
+*  –>  p_rowend  p_colend End Range Cell
+*———————————————————————-*
+FORM merge_cells  USING p_rowini
+p_colini
+p_rowend
+p_colend.
+
+  DATA: lo_cellstart TYPE ole2_object,
+        lo_cellend   TYPE ole2_object,
+        lo_selection TYPE ole2_object,
+        lo_range     TYPE ole2_object.
+
+* Select the Range of Cells:
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellstart
+  EXPORTING
+  #1 = p_rowini
+  #2 = p_colini.
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellend
+  EXPORTING
+  #1 = p_rowend
+  #2 = p_colend.
+  CALL METHOD OF go_worksheet 'Range' = lo_range
+  EXPORTING
+  #1 = lo_cellstart
+  #2 = lo_cellend.
+
+  CALL METHOD OF lo_range 'Select' .
+  CALL METHOD OF lo_range 'Merge' .
+
+ENDFORM. "merge_cells
+*&———————————————————————*
+*&      Form  align Cells
+*&———————————————————————*
+*  Align Cells
+*———————————————————————-*
+*  –>  p_rowini  p_colini Initial Range Cell
+*  –>  p_rowend  p_colend End Range Cell
+*  –>  p_align   Align: c_center, c_left, c_right.
+*———————————————————————-*
+FORM align_cells  USING p_rowini p_colini
+p_rowend p_colend
+p_align.
+
+  DATA: lo_cellstart TYPE ole2_object,
+        lo_cellend   TYPE ole2_object,
+        lo_selection TYPE ole2_object,
+        lo_range     TYPE ole2_object.
+
+* Select the Range of Cells:
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellstart
+  EXPORTING
+  #1 = p_rowini
+  #2 = p_colini.
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellend
+  EXPORTING
+  #1 = p_rowend
+  #2 = p_colend.
+  CALL METHOD OF go_worksheet 'Range' = lo_range
+  EXPORTING
+  #1 = lo_cellstart
+  #2 = lo_cellend.
+
+  CALL METHOD OF lo_range 'select'.
+  SET PROPERTY OF lo_range 'HorizontalAlignment' = p_align.
+
+ENDFORM. "align_cells
+*&———————————————————————*
+*&      Form  Lock cells
+*&———————————————————————*
+*  Lock Cells
+*———————————————————————-*
+*  –>  p_rowini  p_colini Initial Range Cell
+*  –>  p_rowend  p_colend End Range Cell
+*———————————————————————-*
+FORM lock_cells  USING p_rowini p_colini
+p_rowend p_colend.
+
+  DATA: lo_cellstart TYPE ole2_object,
+        lo_cellend   TYPE ole2_object,
+        lo_selection TYPE ole2_object,
+        lo_range     TYPE ole2_object.
+
+* Select the Range of Cells:
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellstart
+  EXPORTING
+  #1 = p_rowini
+  #2 = p_colini.
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellend
+  EXPORTING
+  #1 = p_rowend
+  #2 = p_colend.
+  CALL METHOD OF go_worksheet 'Range' = lo_range
+  EXPORTING
+  #1 = lo_cellstart
+  #2 = lo_cellend.
+
+  CALL METHOD OF lo_range 'select'.
+  CALL METHOD OF go_application 'Selection' = lo_selection.
+  SET PROPERTY OF lo_selection 'Locked' = 1.
+
+  CALL METHOD OF go_worksheet 'Protect'
+    EXPORTING
+      #01 = 0
+      #02 = 0.
+
+ENDFORM. "Lock_cells
+
+
+*&———————————————————————*
+*&      Form  Add Border
+*&———————————————————————*
+*  Add Border
+*———————————————————————-*
+*  –>  p_rowini  p_colini Initial Range Cell
+*  –>  p_rowend  p_colend End Range Cell
+*———————————————————————-*
+FORM add_border  USING p_rowini p_colini
+p_rowend p_colend.
+
+  DATA: lo_cellstart TYPE ole2_object,
+        lo_cellend   TYPE ole2_object,
+        lo_selection TYPE ole2_object,
+        lo_range     TYPE ole2_object,
+        lo_borders   TYPE ole2_object.
+
+* Select the Range of Cells:
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellstart
+  EXPORTING
+  #1 = p_rowini
+  #2 = p_colini.
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellend
+  EXPORTING
+  #1 = p_rowend
+  #2 = p_colend.
+  CALL METHOD OF go_worksheet 'Range' = lo_range
+  EXPORTING
+  #1 = lo_cellstart
+  #2 = lo_cellend.
+
+  CALL METHOD OF lo_range 'Borders' = lo_borders EXPORTING #1 = '7'.
+  "xlEdgeLeft
+  SET PROPERTY OF lo_borders 'LineStyle' = '1'. "xlContinuous
+
+  CALL METHOD OF lo_range 'Borders' = lo_borders EXPORTING #1 = '8'. "xlEdgeTop
+  SET PROPERTY OF lo_borders 'LineStyle' = '1'. "xlContinuous
+
+  CALL METHOD OF lo_range 'Borders' = lo_borders EXPORTING #1 = '9'. "xlEdgeBottom
+  SET PROPERTY OF lo_borders 'LineStyle' = '1'. "xlContinuous
+
+  CALL METHOD OF lo_range 'Borders' = lo_borders EXPORTING #1 = '10'. "xlEdgeRight
+  SET PROPERTY OF lo_borders 'LineStyle' = '1'. "xlContinuous
+
+  CALL METHOD OF lo_range 'Borders' = lo_borders EXPORTING #1 = '11'. "xlInsideVertical
+  SET PROPERTY OF lo_borders 'LineStyle' = '1'. "xlContinuous
+
+  CALL METHOD OF lo_range 'Borders' = lo_borders EXPORTING #1 = '12'. "xlInsideHorizontal
+  SET PROPERTY OF lo_borders 'LineStyle' = '1'. "xlContinuous
+
+ENDFORM.   "Add Border
+*&———————————————————————*
+*&      Form  set_range_name
+*&———————————————————————*
+*  set_range_name
+*———————————————————————-*
+*  –>  p_rowini  p_colini Initial Range Cell
+*  –>  p_rowend  p_colend End Range Cell
+*  –>  p_name    name of the range
+*———————————————————————-*
+FORM set_range_name  USING p_rowini p_colini
+p_rowend p_colend
+p_name.
+
+  DATA: lo_cellstart TYPE ole2_object,
+        lo_cellend   TYPE ole2_object,
+        lo_selection TYPE ole2_object,
+        lo_range     TYPE ole2_object.
+
+* Select the Range of Cells:
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellstart
+  EXPORTING
+  #1 = p_rowini
+  #2 = p_colini.
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellend
+  EXPORTING
+  #1 = p_rowend
+  #2 = p_colend.
+  CALL METHOD OF go_worksheet 'Range' = lo_range
+  EXPORTING
+  #1 = lo_cellstart
+  #2 = lo_cellend.
+
+* Set a name to this Range
+  SET PROPERTY OF lo_range 'Name' = p_name.
+
+ENDFORM. "set_range_name
+*&———————————————————————*
+*&      Form  drop_down_list
+*&———————————————————————*
+*  drop_down_list
+*———————————————————————-*
+*  –>  p_rowini  p_colini Initial Range Cell
+*  –>  p_rowend  p_colend End Range Cell
+*  –>  p_name    name of the value list
+*———————————————————————-*
+FORM drop_down_list USING p_rowini p_colini
+                          p_rowend p_colend
+                          p_name.
+
+  DATA: lo_cellstart  TYPE ole2_object,
+        lo_cellend    TYPE ole2_object,
+        lo_selection  TYPE ole2_object,
+        lo_range      TYPE ole2_object,
+        lo_validation TYPE ole2_object.
+
+  DATA: lv_range_name TYPE char24.
+
+* Select the Range of Cells:
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellstart
+  EXPORTING
+  #1 = p_rowini
+  #2 = p_colini.
+  CALL METHOD OF go_worksheet 'Cells' = lo_cellend
+  EXPORTING
+  #1 = p_rowend
+  #2 = p_colend.
+  CALL METHOD OF go_worksheet 'Range' = lo_range
+  EXPORTING
+  #1 = lo_cellstart
+  #2 = lo_cellend.
+
+  CALL METHOD OF lo_range 'Select'.
+  CALL METHOD OF go_application 'Selection' = lo_selection.
+  CALL METHOD OF lo_selection 'Validation' = lo_validation.
+  CONCATENATE '=' p_name INTO lv_range_name.
+  CALL METHOD OF lo_validation 'Add'
+    EXPORTING
+      #1 = 3 "'xlValidateList'
+      #2 = 1 "'xlValidAlertStop'
+      #3 = 1 "'xlBetween'
+      #4 = lv_range_name.
+
+ENDFORM. "drop_down_list
+*&———————————————————————*
+*&      Form  print_data_fieldcat
+*&———————————————————————*
+*& Add data to be printed in subrutine PASTE_CLIPBOARD
+*& Only the fields in table gt_fieldcat will be included.
+*&———————————————————————*
+*  –>  p_data       Data to print
+*  –>  p_row p_col  Cell from the data will be printed
+*  –>  p_header     Print the header
+*&———————————————————————*
+FORM print_data_fieldcat USING p_data TYPE STANDARD TABLE
+p_row TYPE i
+p_col TYPE i
+p_header.
+
+  FIELD-SYMBOLS: <field>   TYPE any,
+                 <ls_data> TYPE any.
+  DATA: lv_char      TYPE char128,
+        lv_cont      TYPE i,
+        lo_column    TYPE ole2_object,
+        lo_selection TYPE ole2_object.
+
+  DATA: lo_abap_typedescr TYPE REF TO cl_abap_typedescr.
+
+  CLEAR: gs_data, gt_data[].
+
+* Print the header:
+  IF p_header EQ 'x'.
+    CLEAR gt_lines[].
+    LOOP AT gt_fieldcat INTO gs_fieldcat.
+      gs_lines-value = gs_fieldcat-text. APPEND gs_lines TO gt_lines.
+    ENDLOOP.
+    PERFORM add_line2print_from_table.
+  ENDIF.
+
+* Print the data:
+  LOOP AT p_data ASSIGNING <ls_data>.
+    LOOP AT gt_fieldcat INTO gs_fieldcat.
+      ASSIGN COMPONENT gs_fieldcat-field OF STRUCTURE <ls_data> TO <field>.
+      IF sy-subrc EQ 0.
+*         Convert data depend on the kind type.
+        CALL METHOD cl_abap_typedescr=>describe_by_data
+          EXPORTING
+            p_data      = <field>
+          RECEIVING
+            p_descr_ref = lo_abap_typedescr.
+        CASE lo_abap_typedescr->type_kind.
+*           Char
+          WHEN lo_abap_typedescr->typekind_char.
+            CONCATENATE gs_data <field> INTO gs_data
+            SEPARATED BY cl_abap_char_utilities=>horizontal_tab.
+*           Date
+          WHEN lo_abap_typedescr->typekind_date.
+            WRITE <field> TO lv_char DD/MM/YYYY.
+            CONCATENATE gs_data lv_char INTO gs_data
+            SEPARATED BY cl_abap_char_utilities=>horizontal_tab.
+*           Time
+          WHEN lo_abap_typedescr->typekind_time.
+            CONCATENATE <field>(2) <field>+2(2) <field>+4(2) INTO lv_char SEPARATED BY ':'.
+            CONCATENATE gs_data lv_char INTO gs_data
+            SEPARATED BY cl_abap_char_utilities=>horizontal_tab.
+*          Others
+          WHEN OTHERS.
+            WRITE <field> TO lv_char.
+            CONCATENATE gs_data lv_char INTO gs_data
+            SEPARATED BY cl_abap_char_utilities=>horizontal_tab.
+        ENDCASE.
+      ENDIF.
+    ENDLOOP.
+*   Quit the first horizontal_tab:
+    SHIFT gs_data BY 1 PLACES LEFT.
+
+    APPEND gs_data TO gt_data. CLEAR gs_data.
+  ENDLOOP.
+
+* Print the data:
+  PERFORM paste_clipboard USING p_row p_col.
+
+  DATA: lo_columns TYPE ole2_object.
+  CALL METHOD OF go_application 'Columns' = lo_columns.
+  CALL METHOD OF lo_columns 'Autofit'.
+
+
+* Set the columns width
+  CLEAR lv_cont.
+  LOOP AT gt_fieldcat INTO gs_fieldcat.
+    ADD 1 TO lv_cont.
+    IF gs_fieldcat-width NE 0.
+      CALL METHOD OF go_worksheet 'Columns' = lo_column
+      EXPORTING
+      #1 = lv_cont.
+
+      CALL METHOD OF lo_column 'select'.
+      CALL METHOD OF go_application 'selection' = lo_selection.
+      SET PROPERTY OF lo_column 'ColumnWidth' = gs_fieldcat-width.
+    ENDIF.
+  ENDLOOP.
+
+ENDFORM. "print_data_fieldcat
